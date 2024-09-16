@@ -1,7 +1,7 @@
 'use strict';
 
 const should = require('should');
-const request = require('request');
+const axios = require('axios');
 const sinon = require('sinon');
 const logDriver = require('log-driver');
 const index = require('..');
@@ -23,37 +23,64 @@ describe('sendToCoveralls', () => {
     }
   });
 
-  it('passes on the correct params to request.post', done => {
-    sinon.stub(request, 'post').callsFake((obj, cb) => {
-      obj.url.should.equal('https://coveralls.io/api/v1/jobs');
-      obj.form.should.eql({ json: '{"some":"obj"}' });
-      cb('err', 'response', 'body');
+  it('passes on the correct params to axios.post', done => {
+    // Mock axios.post with sinon and resolve the promise
+    const axiosStub = sinon.stub(axios, 'post').resolves({
+      data: 'body',
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config: {}
     });
-
     const obj = { 'some': 'obj' };
-
+    const url = 'https://coveralls.io/api/v1/jobs';
+    // Call the function that makes the axios request
     index.sendToCoveralls(obj, (err, response, body) => {
-      err.should.equal('err');
-      response.should.equal('response');
-      body.should.equal('body');
-      done();
+      try {
+        // Verify that axios.post was called with the correct URL and data
+        axiosStub.calledWith(url, { json: JSON.stringify(obj) }).should.be.true();
+        // Assert the expected behavior of the callback
+        err.should.be.null();
+        response.status.should.equal(200);
+        body.should.equal('body');
+        done();
+      } catch (error) {
+        done(error); // Pass the error to Mocha if an assertion fails
+      } finally {
+        axiosStub.restore(); // Always restore the stub after the test
+      }
     });
   });
 
   it('allows sending to enterprise url', done => {
+    // Set the enterprise URL in the environment variable
     process.env.COVERALLS_ENDPOINT = 'https://coveralls-ubuntu.domain.com';
-    sinon.stub(request, 'post').callsFake((obj, cb) => {
-      obj.url.should.equal('https://coveralls-ubuntu.domain.com/api/v1/jobs');
-      obj.form.should.eql({ json: '{"some":"obj"}' });
-      cb('err', 'response', 'body');
+    // Stub axios.post to resolve a response
+    const axiosStub = sinon.stub(axios, 'post').resolves({
+      data: 'body',
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config: {}
     });
-
     const obj = { 'some': 'obj' };
+    const expectedUrl = `${process.env.COVERALLS_ENDPOINT}/api/v1/jobs`;
+    // Call the function that makes the axios request
     index.sendToCoveralls(obj, (err, response, body) => {
-      err.should.equal('err');
-      response.should.equal('response');
-      body.should.equal('body');
-      done();
+      try {
+        // Verify that axios.post was called with the correct URL and data
+        axiosStub.calledWith(expectedUrl, { json: JSON.stringify(obj) }).should.be.true();
+        // Assert the expected callback behavior
+        err.should.be.null();
+        response.status.should.equal(200);
+        body.should.equal('body');
+        done();
+      } catch (error) {
+        done(error); // Pass any assertion errors to Mocha
+      } finally {
+        axiosStub.restore(); // Restore axios after the test
+        delete process.env.COVERALLS_ENDPOINT; // Clean up the environment variable
+      }
     });
   });
   it('writes output to stdout when --stdout is passed', done => {
